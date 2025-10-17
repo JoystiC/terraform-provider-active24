@@ -1,3 +1,4 @@
+version: 2
 project_name: terraform-provider-active24
 
 before:
@@ -17,6 +18,8 @@ builds:
 
 archives:
   - id: archive
+    # Terraform Registry expects zip
+    format: zip
     name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
     files:
       - LICENSE
@@ -29,6 +32,7 @@ signs:
   - cmd: gpg
     args: ["--batch", "--local-user", "{{ .Env.GPG_FINGERPRINT }}", "--output", "${signature}", "--detach-sign", "${artifact}"]
     signature: "${artifact}.sig"
+    artifacts: checksum
 
 release:
   prerelease: false

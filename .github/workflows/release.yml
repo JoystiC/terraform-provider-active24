@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
@@ -21,10 +23,15 @@ jobs:
         run: |
           echo "$GPG_PRIVATE_KEY" | base64 -d | gpg --batch --import
       - name: Run Goreleaser
+        uses: goreleaser/goreleaser-action@v6
         env:
           GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          curl -sL https://git.io/goreleaser | bash -s -- release --clean
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        permissions:
+          contents: write
 
 
