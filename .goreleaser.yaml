@@ -14,7 +14,8 @@ builds:
       - -s -w -X main.version={{.Version}}
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
-    binary: terraform-provider-active24
+    # Terraform Registry requires the binary INSIDE each zip to be named with _v<version>
+    binary: "terraform-provider-active24_v{{ .Version }}"
 
 archives:
   - id: archive
@@ -24,9 +25,11 @@ archives:
     files:
       - LICENSE
       - README.md
+    rlcp: false
 
 checksum:
   name_template: 'SHA256SUMS'
+  algorithm: sha256
 
 signs:
   - cmd: gpg
