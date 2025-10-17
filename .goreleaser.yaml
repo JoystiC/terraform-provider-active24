@@ -46,6 +46,6 @@ signs:
 release:
   prerelease: false
   extra_files:
-    - glob: 'terraform-provider-active24_{{ .Version }}_manifest.json'
+    - glob: 'terraform-provider-active24_*_manifest.json'
 
 
