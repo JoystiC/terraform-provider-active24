@@ -25,7 +25,6 @@ archives:
     files:
       - LICENSE
       - README.md
-    rlcp: false
 
 checksum:
   name_template: 'SHA256SUMS'
