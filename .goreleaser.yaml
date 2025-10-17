@@ -4,7 +4,6 @@ project_name: terraform-provider-active24
 before:
   hooks:
     - go mod tidy
-    - bash -lc 'ver=${GORELEASER_CURRENT_TAG#v}; cp terraform-registry-manifest.json terraform-provider-active24_${ver}_manifest.json'
 
 builds:
   - id: provider
@@ -28,7 +27,7 @@ checksum:
   name_template: 'terraform-provider-active24_{{ .Version }}_SHA256SUMS'
   algorithm: sha256
   extra_files:
-    - glob: 'terraform-provider-active24_{{ .Version }}_manifest.json'
+    - glob: 'terraform-registry-manifest.json'
 
 signs:
   - cmd: gpg
@@ -46,6 +45,6 @@ signs:
 release:
   prerelease: false
   extra_files:
-    - glob: 'terraform-provider-active24_*_manifest.json'
+    - glob: 'terraform-registry-manifest.json'
 
 
