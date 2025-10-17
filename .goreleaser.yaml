@@ -22,13 +22,11 @@ archives:
     # Terraform Registry expects zip
     format: zip
     name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
-    files:
-      - LICENSE
-      - README.md
 
 checksum:
   name_template: 'SHA256SUMS'
   algorithm: sha256
+  extra_files: []
 
 signs:
   - cmd: gpg
