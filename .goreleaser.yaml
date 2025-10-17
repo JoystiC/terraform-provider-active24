@@ -24,14 +24,13 @@ archives:
     name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
 
 checksum:
-  # Terraform Registry expects the file named <provider>_<version>_SHA256SUMS
-  name_template: '{{ .ProjectName }}_{{ .Version }}_SHA256SUMS'
+  name_template: 'SHA256SUMS'
   algorithm: sha256
   extra_files: []
 
 signs:
   - cmd: gpg
-    args: ["--batch", "--local-user", "{{ .Env.GPG_FINGERPRINT }}", "--armor", "--output", "${signature}", "--detach-sign", "${artifact}"]
+    args: ["--batch", "--local-user", "{{ .Env.GPG_FINGERPRINT }}", "--output", "${signature}", "--detach-sign", "${artifact}"]
     signature: "${artifact}.sig"
     artifacts: checksum
 
