@@ -4,6 +4,7 @@ project_name: terraform-provider-active24
 before:
   hooks:
     - go mod tidy
+    - bash -lc 'ver=${GORELEASER_CURRENT_TAG#v}; mkdir -p dist; cp terraform-registry-manifest.json dist/terraform-provider-active24_${ver}_manifest.json'
 
 builds:
   - id: provider
@@ -24,13 +25,21 @@ archives:
     name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
 
 checksum:
-  name_template: 'SHA256SUMS'
+  name_template: 'terraform-provider-active24_{{ .Version }}_SHA256SUMS'
   algorithm: sha256
-  extra_files: []
+  extra_files:
+    - glob: 'dist/terraform-provider-active24_{{ .Version }}_manifest.json'
 
 signs:
   - cmd: gpg
-    args: ["--batch", "--local-user", "{{ .Env.GPG_FINGERPRINT }}", "--output", "${signature}", "--detach-sign", "${artifact}"]
+    args:
+      - --batch
+      - --local-user
+      - '{{ .Env.GPG_FINGERPRINT }}'
+      - --output
+      - ${signature}
+      - --detach-sign
+      - ${artifact}
     signature: "${artifact}.sig"
     artifacts: checksum
 
