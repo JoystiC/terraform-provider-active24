@@ -30,7 +30,7 @@ checksum:
 
 signs:
   - cmd: gpg
-    args: ["--batch", "--local-user", "{{ .Env.GPG_FINGERPRINT }}", "--output", "${signature}", "--detach-sign", "${artifact}"]
+    args: ["--batch", "--local-user", "{{ .Env.GPG_FINGERPRINT }}", "--armor", "--output", "${signature}", "--detach-sign", "${artifact}"]
     signature: "${artifact}.sig"
     artifacts: checksum
 
