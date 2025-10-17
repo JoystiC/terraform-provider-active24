@@ -43,13 +43,9 @@ signs:
     signature: "${artifact}.sig"
     artifacts: checksum
 
-blobs:
-  - provider: github
-    files:
-      - src: terraform-registry-manifest.json
-        dst: 'terraform-provider-active24_{{ .Version }}_manifest.json'
-
 release:
   prerelease: false
+  extra_files:
+    - glob: 'dist/terraform-provider-active24_{{ .Version }}_manifest.json'
 
 
