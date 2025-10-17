@@ -1,0 +1,36 @@
+project_name: terraform-provider-active24
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: provider
+    main: ./
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    binary: terraform-provider-active24
+
+archives:
+  - id: archive
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: 'SHA256SUMS'
+
+signs:
+  - cmd: gpg
+    args: ["--batch", "--local-user", "{{ .Env.GPG_FINGERPRINT }}", "--output", "${signature}", "--detach-sign", "${artifact}"]
+    signature: "${artifact}.sig"
+
+release:
+  prerelease: false
+
+
