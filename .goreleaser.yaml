@@ -4,7 +4,7 @@ project_name: terraform-provider-active24
 before:
   hooks:
     - go mod tidy
-    - bash -lc "ver=${GORELEASER_CURRENT_TAG#v}; cp terraform-registry-manifest.json terraform-provider-active24_${ver}_manifest.json"
+    - cp terraform-registry-manifest.json terraform-provider-active24_{{ .Version }}_manifest.json
 
 builds:
   - id: provider
