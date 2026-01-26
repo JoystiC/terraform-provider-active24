@@ -146,19 +146,23 @@ func (r *dnsRecordResource) Create(ctx context.Context, req resource.CreateReque
 		targetService = plan.Service.ValueString()
 	}
 
-	_, err := r.client.CreateRecord(ctx, targetService, createReq)
+	createdRec, err := r.client.CreateRecord(ctx, targetService, createReq)
 	if err != nil {
 		resp.Diagnostics.AddError("Error creating record", err.Error())
 		return
 	}
 
-	// After create, API may return 204 with no body. Fetch the record to obtain ID/TTL.
-	records, err := r.client.ListRecords(ctx, targetService, normalizeNameForAPI(plan.Name.ValueString()), plan.Type.ValueString(), plan.Content.ValueString(), ptrI(plan.TTL.ValueInt64()))
-	if err != nil || len(records) == 0 {
-		resp.Diagnostics.AddError("Error reading created record", fmt.Sprintf("lookup failed: %v", err))
-		return
+	// Prefer the record returned by Create (it should have the ID)
+	rec := createdRec
+	if rec == nil || rec.ID == 0 {
+		// Fallback: search if not returned in body
+		records, err := r.client.ListRecords(ctx, targetService, normalizeNameForAPI(plan.Name.ValueString()), plan.Type.ValueString(), plan.Content.ValueString(), ptrI(plan.TTL.ValueInt64()))
+		if err != nil || len(records) == 0 {
+			resp.Diagnostics.AddError("Error reading created record", fmt.Sprintf("lookup failed: %v", err))
+			return
+		}
+		rec = &records[0]
 	}
-	rec := records[0]
 
 	plan.ID = types.StringValue(fmt.Sprintf("%d", rec.ID))
 	plan.TTL = types.Int64Value(rec.TTL)
@@ -167,20 +171,17 @@ func (r *dnsRecordResource) Create(ctx context.Context, req resource.CreateReque
 	} else {
 		plan.Priority = types.Int64Null()
 	}
+
+	// For CAA and other fields, if the API returns them, use them.
+	// Otherwise, keep the ones from the plan to avoid inconsistency errors.
 	if rec.CAAValue != "" {
 		plan.CAAValue = types.StringValue(rec.CAAValue)
-	} else {
-		plan.CAAValue = types.StringNull()
 	}
 	if rec.Flags != nil {
 		plan.CAAFlags = types.Int64Value(*rec.Flags)
-	} else {
-		plan.CAAFlags = types.Int64Null()
 	}
 	if rec.Tag != "" {
 		plan.CAATag = types.StringValue(rec.Tag)
-	} else {
-		plan.CAATag = types.StringNull()
 	}
 
 	diags = resp.State.Set(ctx, &plan)
@@ -205,21 +206,16 @@ func (r *dnsRecordResource) Read(ctx context.Context, req resource.ReadRequest, 
 	if !state.Service.IsNull() && !state.Service.IsUnknown() && state.Service.ValueString() != "" {
 		targetService = state.Service.ValueString()
 	}
-	// v2: list and match by ID
-	records, err := r.client.ListRecords(ctx, targetService, normalizeNameForAPI(state.Name.ValueString()), state.Type.ValueString(), "", nil)
+
+	// Try to get record by ID directly
+	rec, err := r.client.GetRecord(ctx, targetService, id)
 	if err != nil {
-		resp.Diagnostics.AddError("Error reading record", err.Error())
-		return
-	}
-	var rec *DNSRecord
-	for i := range records {
-		if records[i].ID == id {
-			rec = &records[i]
-			break
+		// If 404, record is gone
+		if strings.Contains(err.Error(), "404") {
+			resp.State.RemoveResource(ctx)
+			return
 		}
-	}
-	if rec == nil {
-		resp.State.RemoveResource(ctx)
+		resp.Diagnostics.AddError("Error reading record", err.Error())
 		return
 	}
 
@@ -232,20 +228,15 @@ func (r *dnsRecordResource) Read(ctx context.Context, req resource.ReadRequest, 
 	} else {
 		state.Priority = types.Int64Null()
 	}
+
 	if rec.CAAValue != "" {
 		state.CAAValue = types.StringValue(rec.CAAValue)
-	} else {
-		state.CAAValue = types.StringNull()
 	}
 	if rec.Flags != nil {
 		state.CAAFlags = types.Int64Value(*rec.Flags)
-	} else {
-		state.CAAFlags = types.Int64Null()
 	}
 	if rec.Tag != "" {
 		state.CAATag = types.StringValue(rec.Tag)
-	} else {
-		state.CAATag = types.StringNull()
 	}
 
 	diags = resp.State.Set(ctx, &state)
@@ -297,15 +288,19 @@ func (r *dnsRecordResource) Update(ctx context.Context, req resource.UpdateReque
 	if !plan.Service.IsNull() && !plan.Service.IsUnknown() && plan.Service.ValueString() != "" {
 		targetService = plan.Service.ValueString()
 	}
-	if _, err := r.client.UpdateRecord(ctx, targetService, id, updateReq); err != nil {
+	updatedRec, err := r.client.UpdateRecord(ctx, targetService, id, updateReq)
+	if err != nil {
 		resp.Diagnostics.AddError("Error updating record", err.Error())
 		return
 	}
 
-	// Re-read to reflect server TTL normalization
-	records, err := r.client.ListRecords(ctx, targetService, normalizeNameForAPI(plan.Name.ValueString()), plan.Type.ValueString(), plan.Content.ValueString(), ptrI(plan.TTL.ValueInt64()))
-	if err == nil && len(records) > 0 {
-		rec := records[0]
+	// Use updated record if returned, otherwise fetch
+	rec := updatedRec
+	if rec == nil {
+		rec, _ = r.client.GetRecord(ctx, targetService, id)
+	}
+
+	if rec != nil {
 		plan.TTL = types.Int64Value(rec.TTL)
 		if rec.Priority != nil {
 			plan.Priority = types.Int64Value(*rec.Priority)
@@ -314,18 +309,12 @@ func (r *dnsRecordResource) Update(ctx context.Context, req resource.UpdateReque
 		}
 		if rec.CAAValue != "" {
 			plan.CAAValue = types.StringValue(rec.CAAValue)
-		} else {
-			plan.CAAValue = types.StringNull()
 		}
 		if rec.Flags != nil {
 			plan.CAAFlags = types.Int64Value(*rec.Flags)
-		} else {
-			plan.CAAFlags = types.Int64Null()
 		}
 		if rec.Tag != "" {
 			plan.CAATag = types.StringValue(rec.Tag)
-		} else {
-			plan.CAATag = types.StringNull()
 		}
 	}
 
@@ -358,16 +347,23 @@ func (r *dnsRecordResource) Delete(ctx context.Context, req resource.DeleteReque
 }
 
 func (r *dnsRecordResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	// Expect import ID in the form: domain:id
-	// Example: example.com:12345
-	parts := strings.SplitN(req.ID, ":", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		resp.Diagnostics.AddError("Invalid import format", "Expected '<domain>:<id>'")
-		return
-	}
+	// Support:
+	// <domain>:<id>
+	// <domain>:<service>:<id>
+	parts := strings.Split(req.ID, ":")
 
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("domain"), parts[0])...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), parts[1])...)
+	if len(parts) == 2 {
+		// <domain>:<id>
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("domain"), parts[0])...)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), parts[1])...)
+	} else if len(parts) == 3 {
+		// <domain>:<service>:<id>
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("domain"), parts[0])...)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("service"), parts[1])...)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), parts[2])...)
+	} else {
+		resp.Diagnostics.AddError("Invalid import format", "Expected '<domain>:<id>' or '<domain>:<service>:<id>'")
+	}
 }
 
 // normalizeNameForAPI converts Terraform-friendly apex marker "@" to the API's expected apex representation.
