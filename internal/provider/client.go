@@ -121,20 +121,26 @@ func (c *Client) do(ctx context.Context, method string, requestURL string, in an
 
 // DNS record models (based on common DNS fields; may need adjustments per API)
 type DNSRecord struct {
-	ID       int64  `json:"id"`
-	Name     string `json:"name"`
-	Type     string `json:"type"`
-	Content  string `json:"content"`
-	TTL      int64  `json:"ttl"`
-	Priority *int64 `json:"priority,omitempty"`
+	ID       int64   `json:"id"`
+	Name     string  `json:"name"`
+	Type     string  `json:"type"`
+	Content  string  `json:"content"`
+	TTL      int64   `json:"ttl"`
+	Priority *int64  `json:"priority,omitempty"`
+	CAAValue string  `json:"caaValue,omitempty"`
+	Flags    *int64  `json:"flags,omitempty"`
+	Tag      string  `json:"tag,omitempty"`
 }
 
 type createRecordRequest struct {
-	Name     string `json:"name"`
-	Type     string `json:"type"`
-	Content  string `json:"content"`
-	TTL      int64  `json:"ttl"`
-	Priority *int64 `json:"priority,omitempty"`
+	Name     string  `json:"name"`
+	Type     string  `json:"type"`
+	Content  string  `json:"content"`
+	TTL      int64   `json:"ttl"`
+	Priority *int64  `json:"priority,omitempty"`
+	CAAValue string  `json:"caaValue,omitempty"`
+	Flags    *int64  `json:"flags,omitempty"`
+	Tag      string  `json:"tag,omitempty"`
 }
 
 // CreateRecord creates a DNS record under a domain

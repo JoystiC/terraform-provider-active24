@@ -36,6 +36,9 @@ type dnsRecordModel struct {
 	Content  types.String `tfsdk:"content"`
 	TTL      types.Int64  `tfsdk:"ttl"`
 	Priority types.Int64  `tfsdk:"priority"`
+	CAAValue types.String `tfsdk:"caa_value"`
+	CAAFlags types.Int64  `tfsdk:"caa_flags"`
+	CAATag   types.String `tfsdk:"caa_tag"`
 }
 
 func (r *dnsRecordResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -65,10 +68,11 @@ func (r *dnsRecordResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			},
 			"type": schema.StringAttribute{
 				Required:    true,
-				Description: "DNS record type (A, AAAA, CNAME, TXT, MX, etc.)",
+				Description: "DNS record type (A, AAAA, CNAME, TXT, MX, CAA, etc.)",
 			},
 			"content": schema.StringAttribute{
-				Required: true,
+				Optional:    true,
+				Description: "Record content (not used for CAA)",
 			},
 			"ttl": schema.Int64Attribute{
 				Optional: true,
@@ -78,6 +82,18 @@ func (r *dnsRecordResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			"priority": schema.Int64Attribute{
 				Optional:    true,
 				Description: "Priority for MX/SRV where applicable",
+			},
+			"caa_value": schema.StringAttribute{
+				Optional:    true,
+				Description: "Value for CAA record",
+			},
+			"caa_flags": schema.Int64Attribute{
+				Optional:    true,
+				Description: "Flags for CAA record",
+			},
+			"caa_tag": schema.StringAttribute{
+				Optional:    true,
+				Description: "Tag for CAA record",
 			},
 		},
 	}
@@ -98,6 +114,12 @@ func (r *dnsRecordResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
+	// Basic validation: content is required for non-CAA records
+	if plan.Type.ValueString() != "CAA" && (plan.Content.IsNull() || plan.Content.ValueString() == "") {
+		resp.Diagnostics.AddError("Missing content", "The 'content' attribute is required for non-CAA records.")
+		return
+	}
+
 	createReq := createRecordRequest{
 		Name:    normalizeNameForAPI(plan.Name.ValueString()),
 		Type:    plan.Type.ValueString(),
@@ -107,6 +129,16 @@ func (r *dnsRecordResource) Create(ctx context.Context, req resource.CreateReque
 	if !plan.Priority.IsNull() && !plan.Priority.IsUnknown() {
 		p := plan.Priority.ValueInt64()
 		createReq.Priority = &p
+	}
+	if !plan.CAAValue.IsNull() && !plan.CAAValue.IsUnknown() {
+		createReq.CAAValue = plan.CAAValue.ValueString()
+	}
+	if !plan.CAAFlags.IsNull() && !plan.CAAFlags.IsUnknown() {
+		f := plan.CAAFlags.ValueInt64()
+		createReq.Flags = &f
+	}
+	if !plan.CAATag.IsNull() && !plan.CAATag.IsUnknown() {
+		createReq.Tag = plan.CAATag.ValueString()
 	}
 
 	targetService := plan.Domain.ValueString()
@@ -134,6 +166,21 @@ func (r *dnsRecordResource) Create(ctx context.Context, req resource.CreateReque
 		plan.Priority = types.Int64Value(*rec.Priority)
 	} else {
 		plan.Priority = types.Int64Null()
+	}
+	if rec.CAAValue != "" {
+		plan.CAAValue = types.StringValue(rec.CAAValue)
+	} else {
+		plan.CAAValue = types.StringNull()
+	}
+	if rec.Flags != nil {
+		plan.CAAFlags = types.Int64Value(*rec.Flags)
+	} else {
+		plan.CAAFlags = types.Int64Null()
+	}
+	if rec.Tag != "" {
+		plan.CAATag = types.StringValue(rec.Tag)
+	} else {
+		plan.CAATag = types.StringNull()
 	}
 
 	diags = resp.State.Set(ctx, &plan)
@@ -185,6 +232,21 @@ func (r *dnsRecordResource) Read(ctx context.Context, req resource.ReadRequest, 
 	} else {
 		state.Priority = types.Int64Null()
 	}
+	if rec.CAAValue != "" {
+		state.CAAValue = types.StringValue(rec.CAAValue)
+	} else {
+		state.CAAValue = types.StringNull()
+	}
+	if rec.Flags != nil {
+		state.CAAFlags = types.Int64Value(*rec.Flags)
+	} else {
+		state.CAAFlags = types.Int64Null()
+	}
+	if rec.Tag != "" {
+		state.CAATag = types.StringValue(rec.Tag)
+	} else {
+		state.CAATag = types.StringNull()
+	}
 
 	diags = resp.State.Set(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -195,6 +257,12 @@ func (r *dnsRecordResource) Update(ctx context.Context, req resource.UpdateReque
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Basic validation: content is required for non-CAA records
+	if plan.Type.ValueString() != "CAA" && (plan.Content.IsNull() || plan.Content.ValueString() == "") {
+		resp.Diagnostics.AddError("Missing content", "The 'content' attribute is required for non-CAA records.")
 		return
 	}
 
@@ -213,6 +281,16 @@ func (r *dnsRecordResource) Update(ctx context.Context, req resource.UpdateReque
 	if !plan.Priority.IsNull() && !plan.Priority.IsUnknown() {
 		p := plan.Priority.ValueInt64()
 		updateReq.Priority = &p
+	}
+	if !plan.CAAValue.IsNull() && !plan.CAAValue.IsUnknown() {
+		updateReq.CAAValue = plan.CAAValue.ValueString()
+	}
+	if !plan.CAAFlags.IsNull() && !plan.CAAFlags.IsUnknown() {
+		f := plan.CAAFlags.ValueInt64()
+		updateReq.Flags = &f
+	}
+	if !plan.CAATag.IsNull() && !plan.CAATag.IsUnknown() {
+		updateReq.Tag = plan.CAATag.ValueString()
 	}
 
 	targetService := plan.Domain.ValueString()
@@ -233,6 +311,21 @@ func (r *dnsRecordResource) Update(ctx context.Context, req resource.UpdateReque
 			plan.Priority = types.Int64Value(*rec.Priority)
 		} else {
 			plan.Priority = types.Int64Null()
+		}
+		if rec.CAAValue != "" {
+			plan.CAAValue = types.StringValue(rec.CAAValue)
+		} else {
+			plan.CAAValue = types.StringNull()
+		}
+		if rec.Flags != nil {
+			plan.CAAFlags = types.Int64Value(*rec.Flags)
+		} else {
+			plan.CAAFlags = types.Int64Null()
+		}
+		if rec.Tag != "" {
+			plan.CAATag = types.StringValue(rec.Tag)
+		} else {
+			plan.CAATag = types.StringNull()
 		}
 	}
 

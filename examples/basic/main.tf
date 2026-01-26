@@ -10,7 +10,7 @@ terraform {
 provider "active24" {}
 
 # resource "active24_dns_record" "a_example" {
-#   domain   = "eternalstoic.com"   
+#   domain   = "test.com"   
 #   service  = "10643001"           
 #   name     = "tester6"             
 #   type     = "A"
