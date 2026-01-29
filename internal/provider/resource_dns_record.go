@@ -141,6 +141,17 @@ func (r *dnsRecordResource) Create(ctx context.Context, req resource.CreateReque
 		createReq.Tag = plan.CAATag.ValueString()
 	}
 
+	// Active24 requires 'content' even for CAA records. Synthesize it if missing.
+	if plan.Type.ValueString() == "CAA" && (plan.Content.IsNull() || plan.Content.ValueString() == "") {
+		f := int64(0)
+		if !plan.CAAFlags.IsNull() && !plan.CAAFlags.IsUnknown() {
+			f = plan.CAAFlags.ValueInt64()
+		}
+		t := plan.CAATag.ValueString()
+		v := plan.CAAValue.ValueString()
+		createReq.Content = fmt.Sprintf("%d %s %s", f, t, v)
+	}
+
 	targetService := plan.Domain.ValueString()
 	if !plan.Service.IsNull() && !plan.Service.IsUnknown() && plan.Service.ValueString() != "" {
 		targetService = plan.Service.ValueString()
@@ -295,6 +306,17 @@ func (r *dnsRecordResource) Update(ctx context.Context, req resource.UpdateReque
 	}
 	if !plan.CAATag.IsNull() && !plan.CAATag.IsUnknown() {
 		updateReq.Tag = plan.CAATag.ValueString()
+	}
+
+	// Active24 requires 'content' even for CAA records. Synthesize it if missing.
+	if plan.Type.ValueString() == "CAA" && (plan.Content.IsNull() || plan.Content.ValueString() == "") {
+		f := int64(0)
+		if !plan.CAAFlags.IsNull() && !plan.CAAFlags.IsUnknown() {
+			f = plan.CAAFlags.ValueInt64()
+		}
+		t := plan.CAATag.ValueString()
+		v := plan.CAAValue.ValueString()
+		updateReq.Content = fmt.Sprintf("%d %s %s", f, t, v)
 	}
 
 	targetService := plan.Domain.ValueString()

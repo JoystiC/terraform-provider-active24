@@ -2,7 +2,7 @@ terraform {
   required_providers {
     active24 = {
       source  = "joystic/active24"
-      version = "~> 1.0.2"
+      version = "~> 1.0.3"
     }
   }
 }
@@ -40,12 +40,29 @@ provider "active24" {}
 
 resource "active24_dns_record" "caa_example" {
   domain    = "finbricks.com"
-  name      = "devtest" # apex doména
+  service   = "12905048"
+  name      = "devtest"
   type      = "CAA"
   caa_flags = 0
   caa_tag   = "issue"
   caa_value = "letsencrypt.org"
-  content   = "letsencrypt.org"
+  # content zde již není potřeba
   ttl       = 3600
-  service   = "12905048"
 }
+
+# resource "active24_dns_record" "a_example" {
+#   domain  = "mojedomena.cz"
+#   name    = "www"
+#   type    = "A"
+#   content = "1.2.3.4"
+#   ttl     = 3600
+# }
+
+# # Příklad pro CNAME záznam (alias)
+# resource "active24_dns_record" "cname_example" {
+#   domain  = "mojedomena.cz"
+#   name    = "blog"
+#   type    = "CNAME"
+#   content = "ghs.googlehost.com."
+#   ttl     = 3600
+# }
