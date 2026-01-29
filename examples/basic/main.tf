@@ -2,7 +2,7 @@ terraform {
   required_providers {
     active24 = {
       source  = "joystic/active24"
-      version = "~> 1.0.3"
+      version = "~> 1.0.4"
     }
   }
 }
@@ -38,31 +38,33 @@ provider "active24" {}
 #   ttl       = 3600
 # }
 
-resource "active24_dns_record" "caa_example" {
-  domain    = "finbricks.com"
-  service   = "12905048"
-  name      = "devtest"
-  type      = "CAA"
-  caa_flags = 0
-  caa_tag   = "issue"
-  caa_value = "letsencrypt.org"
-  # content zde již není potřeba
-  ttl       = 3600
-}
+# resource "active24_dns_record" "caa_example" {
+#   domain    = "finbricks.com"
+#   service   = "12905048"
+#   name      = "devtest"
+#   type      = "CAA"
+#   caa_flags = 0
+#   caa_tag   = "issue"
+#   caa_value = "letsencrypt.org"
+#   # content zde již není potřeba
+#   ttl       = 3600
+# }
 
 # resource "active24_dns_record" "a_example" {
-#   domain  = "mojedomena.cz"
-#   name    = "www"
+#   domain  = "finbricks.com"
+#   name    = "devtest"
 #   type    = "A"
 #   content = "1.2.3.4"
 #   ttl     = 3600
+#   service   = "12905048"
 # }
 
 # # Příklad pro CNAME záznam (alias)
 # resource "active24_dns_record" "cname_example" {
-#   domain  = "mojedomena.cz"
-#   name    = "blog"
+#   domain  = "finbricks.com"
+#   name    = "devtest"
 #   type    = "CNAME"
-#   content = "ghs.googlehost.com."
+#   content = "api.dev.finbricks.com"
 #   ttl     = 3600
+#   service   = "12905048"
 # }

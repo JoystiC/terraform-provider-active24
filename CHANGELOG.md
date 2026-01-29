@@ -1,8 +1,8 @@
+## v1.0.5
+
+- Fixed FQDN drift in record names: the provider now automatically strips the domain suffix when reading from the API.
+
 ## v1.0.1
-
-- Fixed checksum mismatch and release automation issues.
-
-## v1.0.0
 
 - Added support for **CAA records** with specialized fields (`caa_value`, `caa_flags`, `caa_tag`).
 - Enhanced validation for DNS records: `content` is now strictly required for non-CAA records.

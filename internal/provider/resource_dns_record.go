@@ -130,26 +130,30 @@ func (r *dnsRecordResource) Create(ctx context.Context, req resource.CreateReque
 		p := plan.Priority.ValueInt64()
 		createReq.Priority = &p
 	}
-	if !plan.CAAValue.IsNull() && !plan.CAAValue.IsUnknown() {
-		createReq.CAAValue = plan.CAAValue.ValueString()
-	}
-	if !plan.CAAFlags.IsNull() && !plan.CAAFlags.IsUnknown() {
-		f := plan.CAAFlags.ValueInt64()
-		createReq.Flags = &f
-	}
-	if !plan.CAATag.IsNull() && !plan.CAATag.IsUnknown() {
-		createReq.Tag = plan.CAATag.ValueString()
-	}
 
-	// Active24 requires 'content' even for CAA records. Synthesize it if missing.
-	if plan.Type.ValueString() == "CAA" && (plan.Content.IsNull() || plan.Content.ValueString() == "") {
-		f := int64(0)
-		if !plan.CAAFlags.IsNull() && !plan.CAAFlags.IsUnknown() {
-			f = plan.CAAFlags.ValueInt64()
+	// Send CAA fields ONLY for CAA record type to avoid API validation errors
+	if plan.Type.ValueString() == "CAA" {
+		if !plan.CAAValue.IsNull() && !plan.CAAValue.IsUnknown() {
+			createReq.CAAValue = plan.CAAValue.ValueString()
 		}
-		t := plan.CAATag.ValueString()
-		v := plan.CAAValue.ValueString()
-		createReq.Content = fmt.Sprintf("%d %s %s", f, t, v)
+		if !plan.CAAFlags.IsNull() && !plan.CAAFlags.IsUnknown() {
+			f := plan.CAAFlags.ValueInt64()
+			createReq.Flags = &f
+		}
+		if !plan.CAATag.IsNull() && !plan.CAATag.IsUnknown() {
+			createReq.Tag = plan.CAATag.ValueString()
+		}
+
+		// Active24 requires 'content' even for CAA records. Synthesize it if missing.
+		if plan.Content.IsNull() || plan.Content.ValueString() == "" {
+			f := int64(0)
+			if !plan.CAAFlags.IsNull() && !plan.CAAFlags.IsUnknown() {
+				f = plan.CAAFlags.ValueInt64()
+			}
+			t := plan.CAATag.ValueString()
+			v := plan.CAAValue.ValueString()
+			createReq.Content = fmt.Sprintf("%d %s %s", f, t, v)
+		}
 	}
 
 	targetService := plan.Domain.ValueString()
@@ -236,7 +240,20 @@ func (r *dnsRecordResource) Read(ctx context.Context, req resource.ReadRequest, 
 		return
 	}
 
-	state.Name = types.StringValue(denormalizeNameFromAPI(rec.Name))
+	// If API returns FQDN, strip the domain part to match relative names in TF config
+	apiName := rec.Name
+	domain := state.Domain.ValueString()
+
+	if apiName == domain || apiName == domain+"." {
+		apiName = "" // will be "@" after denormalizeNameFromAPI
+	} else {
+		suffix := "." + domain
+		if strings.HasSuffix(apiName, suffix) {
+			apiName = strings.TrimSuffix(apiName, suffix)
+		}
+	}
+
+	state.Name = types.StringValue(denormalizeNameFromAPI(apiName))
 	state.Type = types.StringValue(rec.Type)
 	state.TTL = types.Int64Value(rec.TTL)
 
@@ -297,26 +314,30 @@ func (r *dnsRecordResource) Update(ctx context.Context, req resource.UpdateReque
 		p := plan.Priority.ValueInt64()
 		updateReq.Priority = &p
 	}
-	if !plan.CAAValue.IsNull() && !plan.CAAValue.IsUnknown() {
-		updateReq.CAAValue = plan.CAAValue.ValueString()
-	}
-	if !plan.CAAFlags.IsNull() && !plan.CAAFlags.IsUnknown() {
-		f := plan.CAAFlags.ValueInt64()
-		updateReq.Flags = &f
-	}
-	if !plan.CAATag.IsNull() && !plan.CAATag.IsUnknown() {
-		updateReq.Tag = plan.CAATag.ValueString()
-	}
 
-	// Active24 requires 'content' even for CAA records. Synthesize it if missing.
-	if plan.Type.ValueString() == "CAA" && (plan.Content.IsNull() || plan.Content.ValueString() == "") {
-		f := int64(0)
-		if !plan.CAAFlags.IsNull() && !plan.CAAFlags.IsUnknown() {
-			f = plan.CAAFlags.ValueInt64()
+	// Send CAA fields ONLY for CAA record type to avoid API validation errors
+	if plan.Type.ValueString() == "CAA" {
+		if !plan.CAAValue.IsNull() && !plan.CAAValue.IsUnknown() {
+			updateReq.CAAValue = plan.CAAValue.ValueString()
 		}
-		t := plan.CAATag.ValueString()
-		v := plan.CAAValue.ValueString()
-		updateReq.Content = fmt.Sprintf("%d %s %s", f, t, v)
+		if !plan.CAAFlags.IsNull() && !plan.CAAFlags.IsUnknown() {
+			f := plan.CAAFlags.ValueInt64()
+			updateReq.Flags = &f
+		}
+		if !plan.CAATag.IsNull() && !plan.CAATag.IsUnknown() {
+			updateReq.Tag = plan.CAATag.ValueString()
+		}
+
+		// Active24 requires 'content' even for CAA records. Synthesize it if missing.
+		if plan.Content.IsNull() || plan.Content.ValueString() == "" {
+			f := int64(0)
+			if !plan.CAAFlags.IsNull() && !plan.CAAFlags.IsUnknown() {
+				f = plan.CAAFlags.ValueInt64()
+			}
+			t := plan.CAATag.ValueString()
+			v := plan.CAAValue.ValueString()
+			updateReq.Content = fmt.Sprintf("%d %s %s", f, t, v)
+		}
 	}
 
 	targetService := plan.Domain.ValueString()
