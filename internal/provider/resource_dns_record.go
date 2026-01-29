@@ -210,25 +210,38 @@ func (r *dnsRecordResource) Read(ctx context.Context, req resource.ReadRequest, 
 	// Try to get record by ID directly
 	rec, err := r.client.GetRecord(ctx, targetService, id)
 	if err != nil {
-		// If 404, record is gone
-		if strings.Contains(err.Error(), "404") {
-			resp.State.RemoveResource(ctx)
-			return
+		// Fallback: try list records if GetRecord fails (some record types/APIs might behave differently)
+		records, _ := r.client.ListRecords(ctx, targetService, normalizeNameForAPI(state.Name.ValueString()), state.Type.ValueString(), "", nil)
+		for i := range records {
+			if records[i].ID == id {
+				rec = &records[i]
+				break
+			}
 		}
-		resp.Diagnostics.AddError("Error reading record", err.Error())
+	}
+
+	if rec == nil {
+		resp.State.RemoveResource(ctx)
 		return
 	}
 
 	state.Name = types.StringValue(denormalizeNameFromAPI(rec.Name))
 	state.Type = types.StringValue(rec.Type)
-	state.Content = types.StringValue(rec.Content)
 	state.TTL = types.Int64Value(rec.TTL)
+
+	// For non-CAA records, we always sync content.
+	// For CAA, we prefer to keep state if API content is just a serialized version of CAA fields.
+	if state.Type.ValueString() != "CAA" {
+		state.Content = types.StringValue(rec.Content)
+	}
+
 	if rec.Priority != nil {
 		state.Priority = types.Int64Value(*rec.Priority)
 	} else {
 		state.Priority = types.Int64Null()
 	}
 
+	// Only update CAA fields if API explicitly returns them, otherwise keep state
 	if rec.CAAValue != "" {
 		state.CAAValue = types.StringValue(rec.CAAValue)
 	}
