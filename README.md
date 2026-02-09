@@ -1,61 +1,100 @@
-## Terraform Provider for Active24 DNS
+# Terraform Provider for Active24 DNS
 
-This is a community Terraform provider for managing DNS records at Active24 via their REST API.
+Community Terraform provider for managing DNS records at [Active24](https://www.active24.cz/) via their REST API v2.
 
-API reference: [Active24 REST v2 Docs](https://rest.active24.cz/v2/docs) | [OpenAPI JSON](https://rest.active24.cz/v2/docs/openapi.json)
+[![Registry](https://img.shields.io/badge/terraform-registry-blue)](https://registry.terraform.io/providers/JoystiC/active24/latest)
 
-### Installation
+## Features
 
-Local development install:
+- Manage DNS records: **A**, **AAAA**, **CNAME**, **MX**, **TXT**, **SRV**, **CAA**
+- Full **CAA support** with dedicated fields (`caa_flags`, `caa_tag`, `caa_value`)
+- **Smart import** - import existing records by name and type, no numeric ID needed
+- Content-based disambiguation for multiple records on the same name (round-robin A, multiple CAA)
+- HMAC-signed authentication handled automatically
 
-```bash
-make tidy
-make install VERSION=0.0.1
-```
-
-This installs the provider binary to `~/.terraform.d/plugins/registry.terraform.io/petrskyva/active24/0.0.1/${OS}_${ARCH}/terraform-provider-active24`.
-
-### Authentication
-
-Active24 v2 uses HMAC-signed Basic auth: username is API key, password is signature per request, and header `X-Date` must match the signature timestamp. The provider handles signing; set:
-
-```bash
-export ACTIVE24_API_KEY=...    # from Admin
-export ACTIVE24_API_SECRET=... # from Admin
-```
-
-### Usage
-
-See `examples/basic/main.tf`:
+## Quick Start
 
 ```hcl
 terraform {
   required_providers {
     active24 = {
       source  = "joystic/active24"
-      version = "0.0.1"
+      version = "~> 1.1"
     }
   }
 }
 
 provider "active24" {}
 
-resource "active24_dns_record" "a_example" {
+resource "active24_dns_record" "web" {
   domain  = "example.com"
-  # optional: if your service key differs from the domain, set it explicitly
-  # service = "example.com:host"  # example format if applicable
-  name    = "@"
+  service = "12345678"
+  name    = "www"
   type    = "A"
-  content = "1.2.3.4"
+  content = "93.184.216.34"
   ttl     = 3600
 }
 ```
 
-If you use Terragrunt, point modules to this provider the same way as Terraform, and pass the token via an environment variable like `ACTIVE24_API_TOKEN` [[memory:6829071]].
+## Authentication
 
-### Notes
+Set your API credentials via environment variables:
 
-- Endpoints used were inferred from the DNS section and may need alignment with exact paths/fields in the API. Adjust `internal/provider/client.go` accordingly.
-- Import format: `<domain>:<id>` (e.g., `example.com:12345`).
+```bash
+export ACTIVE24_API_KEY="your-api-key"
+export ACTIVE24_API_SECRET="your-api-secret"
+```
 
+Or pass them explicitly in the provider block, or load them from Azure Key Vault. See [provider documentation](https://registry.terraform.io/providers/JoystiC/active24/latest/docs) for details.
 
+## Import
+
+Import existing DNS records without knowing their numeric ID:
+
+```bash
+# By name and type
+terraform import active24_dns_record.web "example.com:12345678:www:A"
+
+# With content disambiguation (multiple records on same name)
+terraform import active24_dns_record.app_1 "example.com:12345678:app:A:10.0.0.1"
+
+# CAA records
+terraform import active24_dns_record.caa "example.com:12345678:@:CAA:letsencrypt.org"
+
+# By numeric ID (also supported)
+terraform import active24_dns_record.web "example.com:12345678:98765"
+```
+
+## Local Development
+
+```bash
+# Build and install locally
+make build
+make install VERSION=1.1.0
+
+# Run tests
+cd examples/basic
+export ACTIVE24_API_KEY="..."
+export ACTIVE24_API_SECRET="..."
+terraform plan
+```
+
+For rapid iteration, use [dev_overrides](https://developer.hashicorp.com/terraform/cli/config/config-file#development-overrides-for-provider-developers) in `~/.terraformrc` to skip `terraform init`:
+
+```hcl
+provider_installation {
+  dev_overrides {
+    "joystic/active24" = "/path/to/bin"
+  }
+  direct {}
+}
+```
+
+## API Reference
+
+- [Active24 REST v2 Docs](https://rest.active24.cz/v2/docs)
+- [OpenAPI Spec](https://rest.active24.cz/v2/docs/openapi.json)
+
+## License
+
+See [LICENSE](LICENSE).

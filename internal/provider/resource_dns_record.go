@@ -164,33 +164,49 @@ func (r *dnsRecordResource) Create(ctx context.Context, req resource.CreateReque
 	// Prefer the record returned by Create (it should have the ID)
 	rec := createdRec
 	if rec == nil || rec.ID == 0 {
-		// Fallback: search if not returned in body
-		records, err := r.client.ListRecords(ctx, targetService, normalizeNameForAPI(plan.Name.ValueString()), plan.Type.ValueString(), plan.Content.ValueString(), ptrI(plan.TTL.ValueInt64()))
+		// Fallback: search by name+type, then match by content to find the exact record
+		records, err := r.client.ListRecords(ctx, targetService, normalizeNameForAPI(plan.Name.ValueString()), plan.Type.ValueString(), "", nil)
 		if err != nil || len(records) == 0 {
 			resp.Diagnostics.AddError("Error reading created record", fmt.Sprintf("lookup failed: %v", err))
 			return
 		}
-		rec = &records[0]
+		// Match by content (or caaValue for CAA) to find the exact record among duplicates
+		matchContent := createReq.Content
+		for i := range records {
+			if records[i].Content == matchContent || records[i].CAAValue == matchContent {
+				rec = &records[i]
+				break
+			}
+		}
+		if rec == nil {
+			// Last resort: take the first match
+			rec = &records[0]
+		}
 	}
 
 	plan.ID = types.StringValue(fmt.Sprintf("%d", rec.ID))
-	plan.TTL = types.Int64Value(rec.TTL)
+	// Only update TTL from API if it returned a non-zero value
+	if rec.TTL > 0 {
+		plan.TTL = types.Int64Value(rec.TTL)
+	}
 	if rec.Priority != nil {
 		plan.Priority = types.Int64Value(*rec.Priority)
 	} else {
 		plan.Priority = types.Int64Null()
 	}
 
-	// For CAA and other fields, if the API returns them, use them.
-	// Otherwise, keep the ones from the plan to avoid inconsistency errors.
-	if rec.CAAValue != "" {
-		plan.CAAValue = types.StringValue(rec.CAAValue)
-	}
-	if rec.Flags != nil {
-		plan.CAAFlags = types.Int64Value(*rec.Flags)
-	}
-	if rec.Tag != "" {
-		plan.CAATag = types.StringValue(rec.Tag)
+	// For CAA: update caa_* fields if API returns them, keep content null
+	if strings.EqualFold(plan.Type.ValueString(), "CAA") {
+		if rec.CAAValue != "" {
+			plan.CAAValue = types.StringValue(rec.CAAValue)
+		}
+		if rec.Flags != nil {
+			plan.CAAFlags = types.Int64Value(*rec.Flags)
+		}
+		if rec.Tag != "" {
+			plan.CAATag = types.StringValue(rec.Tag)
+		}
+		plan.Content = types.StringNull()
 	}
 
 	diags = resp.State.Set(ctx, &plan)
@@ -258,14 +274,13 @@ func (r *dnsRecordResource) Read(ctx context.Context, req resource.ReadRequest, 
 	}
 
 	if strings.EqualFold(rec.Type, "CAA") {
-		// For CAA records: populate caa_* fields from API, and keep content in sync
+		// For CAA records: populate caa_* fields from API.
+		// Do NOT set content in state - it is only used internally for API calls.
 		if rec.CAAValue != "" {
 			state.CAAValue = types.StringValue(rec.CAAValue)
-			state.Content = types.StringValue(rec.CAAValue)
 		} else if rec.Content != "" && (state.CAAValue.IsNull() || state.CAAValue.ValueString() == "") {
-			// API didn't return caaValue separately, but content has the data
+			// API didn't return caaValue separately, use content as fallback
 			state.CAAValue = types.StringValue(rec.Content)
-			state.Content = types.StringValue(rec.Content)
 		}
 		if rec.Flags != nil {
 			state.CAAFlags = types.Int64Value(*rec.Flags)
@@ -275,6 +290,8 @@ func (r *dnsRecordResource) Read(ctx context.Context, req resource.ReadRequest, 
 		if rec.Tag != "" {
 			state.CAATag = types.StringValue(rec.Tag)
 		}
+		// Keep content null for CAA - user should not need to set it
+		state.Content = types.StringNull()
 	} else {
 		// For all other record types: always sync content from API
 		state.Content = types.StringValue(rec.Content)
@@ -355,7 +372,10 @@ func (r *dnsRecordResource) Update(ctx context.Context, req resource.UpdateReque
 	}
 
 	if rec != nil {
-		plan.TTL = types.Int64Value(rec.TTL)
+		// Only update TTL from API if it returned a non-zero value
+		if rec.TTL > 0 {
+			plan.TTL = types.Int64Value(rec.TTL)
+		}
 		if rec.Priority != nil {
 			plan.Priority = types.Int64Value(*rec.Priority)
 		} else {
@@ -370,6 +390,11 @@ func (r *dnsRecordResource) Update(ctx context.Context, req resource.UpdateReque
 		if rec.Tag != "" {
 			plan.CAATag = types.StringValue(rec.Tag)
 		}
+	}
+
+	// For CAA: keep content null in state
+	if strings.EqualFold(plan.Type.ValueString(), "CAA") {
+		plan.Content = types.StringNull()
 	}
 
 	diags = resp.State.Set(ctx, &plan)
@@ -402,14 +427,18 @@ func (r *dnsRecordResource) Delete(ctx context.Context, req resource.DeleteReque
 
 func (r *dnsRecordResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	// Supported formats:
-	//   <domain>:<id>                       e.g. finbricks.com:311059968
-	//   <domain>:<service>:<id>             e.g. finbricks.com:12905048:311059968
-	//   <domain>:<name>:<type>              e.g. finbricks.com:devtest.dev:A
-	//   <domain>:<service>:<name>:<type>    e.g. finbricks.com:12905048:devtest.dev:CAA
+	//   <domain>:<id>                                e.g. finbricks.com:311059968
+	//   <domain>:<service>:<id>                      e.g. finbricks.com:12905048:311059968
+	//   <domain>:<name>:<type>                       e.g. finbricks.com:devtest.dev:A
+	//   <domain>:<service>:<name>:<type>             e.g. finbricks.com:12905048:devtest.dev:CAA
+	//   <domain>:<service>:<name>:<type>:<content>   e.g. finbricks.com:12905048:@:CAA:letsencrypt.org
 	//
-	// The provider auto-detects the format: if the last part is a known DNS
-	// record type string it uses name+type lookup; otherwise it treats it as a
-	// numeric record ID.
+	// The last format allows disambiguating when multiple records of the same
+	// type exist on the same name (e.g. multiple CAA records).
+	//
+	// The provider auto-detects the format: if the last (or second-to-last)
+	// part is a known DNS record type string, it uses name+type lookup;
+	// otherwise it treats the last part as a numeric record ID.
 
 	parts := strings.Split(req.ID, ":")
 
@@ -422,7 +451,7 @@ func (r *dnsRecordResource) ImportState(ctx context.Context, req resource.Import
 	case 3:
 		if isDNSType(parts[2]) {
 			// <domain>:<name>:<type>
-			r.importByNameType(ctx, parts[0], "", parts[1], parts[2], resp)
+			r.importByNameType(ctx, parts[0], "", parts[1], parts[2], "", resp)
 		} else {
 			// <domain>:<service>:<id>
 			resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("domain"), parts[0])...)
@@ -432,7 +461,11 @@ func (r *dnsRecordResource) ImportState(ctx context.Context, req resource.Import
 
 	case 4:
 		// <domain>:<service>:<name>:<type>
-		r.importByNameType(ctx, parts[0], parts[1], parts[2], parts[3], resp)
+		r.importByNameType(ctx, parts[0], parts[1], parts[2], parts[3], "", resp)
+
+	case 5:
+		// <domain>:<service>:<name>:<type>:<content>
+		r.importByNameType(ctx, parts[0], parts[1], parts[2], parts[3], parts[4], resp)
 
 	default:
 		resp.Diagnostics.AddError("Invalid import format",
@@ -440,15 +473,22 @@ func (r *dnsRecordResource) ImportState(ctx context.Context, req resource.Import
 				"  <domain>:<id>\n"+
 				"  <domain>:<service>:<id>\n"+
 				"  <domain>:<name>:<type>\n"+
-				"  <domain>:<service>:<name>:<type>")
+				"  <domain>:<service>:<name>:<type>\n"+
+				"  <domain>:<service>:<name>:<type>:<content>")
 	}
 }
 
 // importByNameType looks up a record by name and type via the API, then sets the state.
-func (r *dnsRecordResource) importByNameType(ctx context.Context, domain, service, name, rtype string, resp *resource.ImportStateResponse) {
+// If content is non-empty, it is used to disambiguate when multiple records match name+type.
+func (r *dnsRecordResource) importByNameType(ctx context.Context, domain, service, name, rtype, content string, resp *resource.ImportStateResponse) {
 	targetService := domain
 	if service != "" {
 		targetService = service
+	}
+
+	// Normalize "@" to empty string for API
+	if name == "@" {
+		name = ""
 	}
 
 	// Strip domain suffix if user provided FQDN (e.g. "devtest.dev.finbricks.com" -> "devtest.dev")
@@ -465,8 +505,8 @@ func (r *dnsRecordResource) importByNameType(ctx context.Context, domain, servic
 		return
 	}
 
-	// Find exact match by name and type
-	var found *DNSRecord
+	// Find matching records by name and type
+	var matches []DNSRecord
 	for i := range records {
 		recName := records[i].Name
 		// Normalize: strip domain suffix from API response too
@@ -474,15 +514,53 @@ func (r *dnsRecordResource) importByNameType(ctx context.Context, domain, servic
 			recName = strings.TrimSuffix(recName, fqdnSuffix)
 		}
 		if recName == name && strings.EqualFold(records[i].Type, rtype) {
-			found = &records[i]
-			break
+			matches = append(matches, records[i])
 		}
 	}
 
-	if found == nil {
+	if len(matches) == 0 {
 		resp.Diagnostics.AddError("Record not found",
 			fmt.Sprintf("No %s record named '%s' found in zone %s (service %s)", rtype, name, domain, targetService))
 		return
+	}
+
+	var found *DNSRecord
+
+	if len(matches) == 1 {
+		found = &matches[0]
+	} else {
+		// Multiple matches - try to disambiguate by content
+		if content != "" {
+			for i := range matches {
+				recContent := matches[i].Content
+				recCAAValue := matches[i].CAAValue
+				if strings.EqualFold(recContent, content) || strings.EqualFold(recCAAValue, content) {
+					found = &matches[i]
+					break
+				}
+			}
+			if found == nil {
+				resp.Diagnostics.AddError("Record not found",
+					fmt.Sprintf("Found %d %s records named '%s' but none matching content '%s'", len(matches), rtype, name, content))
+				return
+			}
+		} else {
+			// No content filter - show all matches so user can pick
+			var ids []string
+			for _, m := range matches {
+				detail := m.Content
+				if m.CAAValue != "" {
+					detail = fmt.Sprintf("%s (tag=%s)", m.CAAValue, m.Tag)
+				}
+				ids = append(ids, fmt.Sprintf("  ID %d: %s", m.ID, detail))
+			}
+			resp.Diagnostics.AddError("Multiple records found",
+				fmt.Sprintf("Found %d %s records named '%s'. Use one of these formats to disambiguate:\n"+
+					"  <domain>:<service>:<name>:<type>:<content>\n"+
+					"  <domain>:<service>:<id>\n\n"+
+					"Matching records:\n%s", len(matches), rtype, name, strings.Join(ids, "\n")))
+			return
+		}
 	}
 
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("domain"), domain)...)

@@ -7,39 +7,112 @@ terraform {
   }
 }
 
-provider "active24" {}
+provider "active24" {
+  # Credentials are loaded from environment variables:
+  #   ACTIVE24_API_KEY
+  #   ACTIVE24_API_SECRET
+  #
+  # Or set them explicitly:
+  #   api_key    = "your-api-key"
+  #   api_secret = "your-api-secret"
+}
 
-# Import by ID:   terraform import active24_dns_record.a_example "finbricks.com:12905048:311059968"
-# Import by name:  terraform import active24_dns_record.a_example "finbricks.com:12905048:devtest:A"
-resource "active24_dns_record" "a_example" {
-  domain  = "finbricks.com"
-  service = "12905048"
-  name    = "devtest"
+# --- A record ---
+# Points a subdomain to an IP address.
+resource "active24_dns_record" "web" {
+  domain  = "example.com"
+  service = "12345678"
+  name    = "www"
   type    = "A"
-  content = "1.2.3.5"
+  content = "93.184.216.34"
   ttl     = 3600
 }
 
-# Import by ID:   terraform import active24_dns_record.cname_example "finbricks.com:12905048:123456789"
-# Import by name:  terraform import active24_dns_record.cname_example "finbricks.com:12905048:devtest.dev:CNAME"
-resource "active24_dns_record" "cname_example" {
-  domain  = "finbricks.com"
-  service = "12905048"
-  name    = "devtest.dev"
+# --- Multiple A records on the same name (round-robin) ---
+resource "active24_dns_record" "app_1" {
+  domain  = "example.com"
+  service = "12345678"
+  name    = "app"
+  type    = "A"
+  content = "10.0.0.1"
+  ttl     = 300
+}
+
+resource "active24_dns_record" "app_2" {
+  domain  = "example.com"
+  service = "12345678"
+  name    = "app"
+  type    = "A"
+  content = "10.0.0.2"
+  ttl     = 300
+}
+
+# --- CNAME record ---
+# Alias pointing to another domain name.
+resource "active24_dns_record" "blog" {
+  domain  = "example.com"
+  service = "12345678"
+  name    = "blog"
   type    = "CNAME"
-  content = "grafana.dev.finbricks.com"
+  content = "example.github.io"
   ttl     = 3600
 }
 
-# Import by ID:   terraform import active24_dns_record.caa_example "finbricks.com:12905048:311059866"
-# Import by name:  terraform import active24_dns_record.caa_example "finbricks.com:12905048:devtest.dev:CAA"
-resource "active24_dns_record" "caa_example" {
-  domain    = "finbricks.com"
-  service   = "12905048"
-  name      = "devtest.dev"
+# --- MX record ---
+# Mail exchange record with priority.
+resource "active24_dns_record" "mail" {
+  domain   = "example.com"
+  service  = "12345678"
+  name     = "@"
+  type     = "MX"
+  content  = "mail.example.com"
+  priority = 10
+  ttl      = 3600
+}
+
+# --- TXT record ---
+# Commonly used for SPF, DKIM, domain verification, etc.
+resource "active24_dns_record" "spf" {
+  domain  = "example.com"
+  service = "12345678"
+  name    = "@"
+  type    = "TXT"
+  content = "v=spf1 include:_spf.google.com ~all"
+  ttl     = 3600
+}
+
+# --- CAA record ---
+# Restricts which Certificate Authorities can issue SSL certificates.
+resource "active24_dns_record" "caa_issue" {
+  domain    = "example.com"
+  service   = "12345678"
+  name      = "@"
   type      = "CAA"
   caa_flags = 0
   caa_tag   = "issue"
   caa_value = "letsencrypt.org"
+  ttl       = 3600
+}
+
+# --- Multiple CAA records on the same name ---
+resource "active24_dns_record" "caa_issuewild" {
+  domain    = "example.com"
+  service   = "12345678"
+  name      = "@"
+  type      = "CAA"
+  caa_flags = 0
+  caa_tag   = "issuewild"
+  caa_value = "letsencrypt.org"
+  ttl       = 3600
+}
+
+resource "active24_dns_record" "caa_iodef" {
+  domain    = "example.com"
+  service   = "12345678"
+  name      = "@"
+  type      = "CAA"
+  caa_flags = 0
+  caa_tag   = "iodef"
+  caa_value = "mailto:ssl@example.com"
   ttl       = 3600
 }
