@@ -2,7 +2,7 @@ terraform {
   required_providers {
     active24 = {
       source  = "joystic/active24"
-      version = "~> 1.1.0"
+      version = "~> 1.3"
     }
   }
 }

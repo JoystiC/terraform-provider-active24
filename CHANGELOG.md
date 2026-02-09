@@ -1,4 +1,4 @@
-## v1.1.0
+## v1.3.0
 
 ### New Features
 - **CAA record support** with dedicated fields (`caa_value`, `caa_flags`, `caa_tag`).
@@ -9,6 +9,7 @@
   - Full FQDN is also accepted (e.g. `example.com:12345678:www.example.com:A`)
 - **Content-based disambiguation**: When multiple records of the same type exist on the same name, import by content to select the correct one. If ambiguous, the provider lists all matching records with their IDs.
 - **Validation**: `content` is now required for non-CAA records.
+- **Comprehensive documentation** with examples for all record types (A, AAAA, CNAME, MX, TXT, CAA).
 
 ### Bug Fixes
 - Fixed FQDN drift: the provider now strips the domain suffix from record names returned by the API.
@@ -16,6 +17,7 @@
 - Fixed CAA field consistency: `Read` now correctly populates all CAA fields after create, update, and import.
 - Fixed CNAME/A 500 errors: CAA-specific fields are no longer sent for non-CAA record types.
 - Fixed TTL drift: the provider preserves TTL from configuration when the API returns 0.
+- Fixed record read-back after create: content-based matching prevents picking the wrong record when duplicates exist.
 
 ## v0.0.17
 
