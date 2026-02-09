@@ -1,13 +1,18 @@
-## v1.0.5
+## v1.1.0
 
-- Fixed FQDN drift in record names: the provider now automatically strips the domain suffix when reading from the API.
+### New Features
+- **Import by name and type**: Import existing DNS records without knowing their numeric ID. Supported formats:
+  - `<domain>:<name>:<type>` (e.g. `finbricks.com:www:A`)
+  - `<domain>:<service>:<name>:<type>` (e.g. `finbricks.com:12905048:devtest.dev:CAA`)
+  - Full FQDN is also accepted (e.g. `finbricks.com:12905048:devtest.finbricks.com:A`)
+- **CAA record support** with dedicated fields (`caa_value`, `caa_flags`, `caa_tag`).
 
-## v1.0.1
-
-- Added support for **CAA records** with specialized fields (`caa_value`, `caa_flags`, `caa_tag`).
-- Enhanced validation for DNS records: `content` is now strictly required for non-CAA records.
-- Updated documentation with CAA examples and detailed argument descriptions.
-- Improved resource logic to handle server-side TTL normalization and record lookup consistency.
+### Bug Fixes
+- Fixed FQDN drift: the provider now strips the domain suffix from record names returned by the API.
+- Fixed CAA content synthesis: `content` is auto-populated from `caa_value` for Active24 API compatibility.
+- Fixed CAA field consistency: `Read` now correctly populates all CAA fields after create, update, and import.
+- Fixed CNAME/A 500 errors: CAA-specific fields are no longer sent for non-CAA record types.
+- Validation: `content` is now required for non-CAA records.
 
 ## v0.0.17
 
