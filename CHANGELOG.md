@@ -1,3 +1,8 @@
+## v1.3.1
+
+### Bug Fixes
+- **Exact name match on create read-back**: Active24 API uses substring matching for `filters[name]`, so names like `service.dev` also matched `status-service.dev`. The provider now matches by exact record name (after stripping domain suffix) when finding the created record, preventing wrong IDs in state for subdomains that are substrings of others.
+
 ## v1.3.0
 
 ### New Features

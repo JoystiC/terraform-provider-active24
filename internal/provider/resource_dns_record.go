@@ -164,23 +164,34 @@ func (r *dnsRecordResource) Create(ctx context.Context, req resource.CreateReque
 	// Prefer the record returned by Create (it should have the ID)
 	rec := createdRec
 	if rec == nil || rec.ID == 0 {
-		// Fallback: search by name+type, then match by content to find the exact record
+		// Fallback: search by name+type, then match by exact name + content.
+		// Active24 API filters by substring, so we must do exact name matching client-side.
 		records, err := r.client.ListRecords(ctx, targetService, normalizeNameForAPI(plan.Name.ValueString()), plan.Type.ValueString(), "", nil)
 		if err != nil || len(records) == 0 {
 			resp.Diagnostics.AddError("Error reading created record", fmt.Sprintf("lookup failed: %v", err))
 			return
 		}
-		// Match by content (or caaValue for CAA) to find the exact record among duplicates
 		matchContent := createReq.Content
+		matchName := normalizeNameForAPI(plan.Name.ValueString())
+		domain := plan.Domain.ValueString()
+		fqdnSuffix := "." + domain
+
 		for i := range records {
+			recName := records[i].Name
+			if strings.HasSuffix(recName, fqdnSuffix) {
+				recName = strings.TrimSuffix(recName, fqdnSuffix)
+			}
+			if recName != matchName {
+				continue
+			}
 			if records[i].Content == matchContent || records[i].CAAValue == matchContent {
 				rec = &records[i]
 				break
 			}
 		}
 		if rec == nil {
-			// Last resort: take the first match
-			rec = &records[0]
+			resp.Diagnostics.AddError("Error reading created record", "Could not find the created record by exact name and content match")
+			return
 		}
 	}
 
