@@ -174,14 +174,9 @@ func (r *dnsRecordResource) Create(ctx context.Context, req resource.CreateReque
 		matchContent := createReq.Content
 		matchName := normalizeNameForAPI(plan.Name.ValueString())
 		domain := plan.Domain.ValueString()
-		fqdnSuffix := "." + domain
 
 		for i := range records {
-			recName := records[i].Name
-			if strings.HasSuffix(recName, fqdnSuffix) {
-				recName = strings.TrimSuffix(recName, fqdnSuffix)
-			}
-			if recName != matchName {
+			if relativeName(records[i].Name, domain) != matchName {
 				continue
 			}
 			if records[i].Content == matchContent || records[i].CAAValue == matchContent {
@@ -246,8 +241,17 @@ func (r *dnsRecordResource) Read(ctx context.Context, req resource.ReadRequest, 
 	// Try to get record by ID directly
 	rec, err := r.client.GetRecord(ctx, targetService, id)
 	if err != nil {
-		// Fallback: try list records if GetRecord fails (some record types/APIs might behave differently)
-		records, _ := r.client.ListRecords(ctx, targetService, normalizeNameForAPI(state.Name.ValueString()), state.Type.ValueString(), "", nil)
+		// Fallback: the v2 API has no GET for a single record, so search the list.
+		// The name filter is a substring match, so filtering by name is safe.
+		var records []DNSRecord
+		records, err = r.client.ListRecords(ctx, targetService, normalizeNameForAPI(state.Name.ValueString()), state.Type.ValueString(), "", nil)
+		if err != nil {
+			// Do not drop the resource from state on API errors; that would
+			// make the next apply create a duplicate record.
+			resp.Diagnostics.AddError("Error reading record", err.Error())
+			return
+		}
+		rec = nil
 		for i := range records {
 			if records[i].ID == id {
 				rec = &records[i]
@@ -519,12 +523,7 @@ func (r *dnsRecordResource) importByNameType(ctx context.Context, domain, servic
 	// Find matching records by name and type
 	var matches []DNSRecord
 	for i := range records {
-		recName := records[i].Name
-		// Normalize: strip domain suffix from API response too
-		if strings.HasSuffix(recName, fqdnSuffix) {
-			recName = strings.TrimSuffix(recName, fqdnSuffix)
-		}
-		if recName == name && strings.EqualFold(records[i].Type, rtype) {
+		if relativeName(records[i].Name, domain) == name && strings.EqualFold(records[i].Type, rtype) {
 			matches = append(matches, records[i])
 		}
 	}
@@ -590,6 +589,17 @@ func isDNSType(s string) bool {
 		return true
 	}
 	return false
+}
+
+// relativeName converts a record name returned by the API (which uses the
+// FQDN, e.g. "www.example.com", and the bare domain for the apex) to the
+// relative form used for matching ("www", "" for the apex).
+func relativeName(apiName, domain string) string {
+	apiName = strings.TrimSuffix(apiName, ".")
+	if apiName == domain {
+		return ""
+	}
+	return strings.TrimSuffix(apiName, "."+domain)
 }
 
 // normalizeNameForAPI converts Terraform-friendly apex marker "@" to the API's expected apex representation.

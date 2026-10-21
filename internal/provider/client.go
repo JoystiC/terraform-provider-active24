@@ -177,10 +177,18 @@ func (c *Client) DeleteRecord(ctx context.Context, domain string, id int64) erro
 	return c.do(ctx, http.MethodDelete, url, nil, nil)
 }
 
-// dnsRecordsPage is a minimal response model for paginated list
+// dnsRecordsPage is the paginated list response
 type dnsRecordsPage struct {
-	Data []DNSRecord `json:"data"`
+	Data        []DNSRecord `json:"data"`
+	CurrentPage int         `json:"currentPage"`
+	TotalPages  int         `json:"totalPages"`
 }
+
+// listPageSize is the rows requested per page. The API default is 20.
+const listPageSize = 100
+
+// maxListPages guards against a misbehaving totalPages value.
+const maxListPages = 1000
 
 // ListRecords lists DNS records with basic filters (name/type/content/ttl)
 func (c *Client) ListRecords(ctx context.Context, domain string, name string, rtype string, content string, ttl *int64) ([]DNSRecord, error) {
@@ -198,15 +206,23 @@ func (c *Client) ListRecords(ctx context.Context, domain string, name string, rt
 	if ttl != nil {
 		q.Set("filters[ttl]", fmt.Sprintf("%d", *ttl))
 	}
-	if enc := q.Encode(); enc != "" {
-		base = base + "?" + enc
-	}
+	q.Set("rowsPerPage", strconv.Itoa(listPageSize))
 
-	var page dnsRecordsPage
-	if err := c.do(ctx, http.MethodGet, base, nil, &page); err != nil {
-		return nil, err
+	// The API returns one page at a time; follow all pages so records past
+	// the first page are not reported as missing.
+	var all []DNSRecord
+	for p := 1; p <= maxListPages; p++ {
+		q.Set("page", strconv.Itoa(p))
+		var page dnsRecordsPage
+		if err := c.do(ctx, http.MethodGet, base+"?"+q.Encode(), nil, &page); err != nil {
+			return nil, err
+		}
+		all = append(all, page.Data...)
+		if len(page.Data) == 0 || p >= page.TotalPages {
+			break
+		}
 	}
-	return page.Data, nil
+	return all, nil
 }
 
 func getEnv(key string) string {
