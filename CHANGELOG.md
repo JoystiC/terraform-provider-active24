@@ -1,3 +1,10 @@
+## Unreleased
+
+### Bug Fixes
+- **List pagination**: `ListRecords` now follows all pages (`rowsPerPage=100`). The API returns 20 records per page by default, and the v2 API has no GET for a single record, so `Read` always falls back to the list. In zones with more than 20 records (of a type, for apex records), records past page 1 were reported as missing: imports failed with "Cannot import non-existent remote object" and existing resources dropped out of state on refresh.
+- **Read no longer drops state on API errors**: a failed list call now returns an error instead of removing the resource, which would make the next apply create a duplicate record.
+- **Apex records on import by name/type**: the API returns apex records with the bare domain as the name (`example.com`), which never matched `@`. Matching now uses a shared `relativeName` helper.
+
 ## v1.3.1
 
 ### Bug Fixes
